@@ -147,7 +147,11 @@ The CMDLINE should be something like:
        (virtualenv-activate virtualenv)
        (desktop-change-dir virtualenv))
 
-     
+     (add-hook 'python-mode-hook (lambda ()
+                                   (if (and (getenv "VIRTUAL_ENV") (not (string= (getenv "VIRTUAL_ENV") "")))
+                                       (virtualenv-activate (getenv "VIRTUAL_ENV"))
+                                     )))
+
      )
   )
 ;; Cython Mode
