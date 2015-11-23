@@ -30,7 +30,7 @@ def lint(filename):
         parentPath = os.path.dirname(parentPath)
 
     # Start pylint
-    command = "pylint --msg-template '{path}:{line}:{column} [{msg_id}({symbol}), {obj}] {msg}' --report=no '%s'"
+    command = "pylint --msg-template '{path}:{line}:{column} [{msg_id}({symbol}), {obj}] {msg}' --report=no --module-rgx='(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+)|flymake[0-9a-zA-Z_]+)$' '%s'"
     process = Popen(command %
                     childPath, shell=True, stdout=PIPE, stderr=PIPE,
                     cwd=parentPath)
