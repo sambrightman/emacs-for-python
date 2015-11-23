@@ -703,12 +703,13 @@ It's flymake process filter."
 
 (defstruct (flymake-ler
             (:constructor nil)
-            (:constructor flymake-ler-make-ler (file line type text &optional full-file)))
-  file line type text full-file)
+            (:constructor flymake-ler-make-ler (file line column type text &optional full-file)))
+  file line type text full-file column)
 
 (defun flymake-ler-set-file (line-err-info file)
   (flymake-ler-make-ler file
 			(flymake-ler-line line-err-info)
+			(flymake-ler-column line-err-info)
 			(flymake-ler-type line-err-info)
 			(flymake-ler-text line-err-info)
 			(flymake-ler-full-file line-err-info)))
@@ -716,6 +717,7 @@ It's flymake process filter."
 (defun flymake-ler-set-full-file (line-err-info full-file)
   (flymake-ler-make-ler (flymake-ler-file line-err-info)
 			(flymake-ler-line line-err-info)
+			(flymake-ler-column line-err-info)
 			(flymake-ler-type line-err-info)
 			(flymake-ler-text line-err-info)
 			full-file))
@@ -723,6 +725,7 @@ It's flymake process filter."
 (defun flymake-ler-set-line (line-err-info line)
   (flymake-ler-make-ler (flymake-ler-file line-err-info)
 			line
+			(flymake-ler-column line-err-info)
 			(flymake-ler-type line-err-info)
 			(flymake-ler-text line-err-info)
 			(flymake-ler-full-file line-err-info)))
@@ -877,26 +880,25 @@ Perhaps use text from LINE-ERR-INFO-LIST to enhance highlighting."
 
 (defun flymake-parse-err-lines (err-info-list lines)
   "Parse err LINES, store info in ERR-INFO-LIST."
-  (let* ((count              (length lines))
-	 (idx                0)
-	 (line-err-info      nil)
-	 (real-file-name     nil)
-	 (source-file-name   buffer-file-name)
+  (let* ((count				 (length lines))
+	 (idx				 0)
+	 (line-err-info		 nil)
+	 (real-file-name	 nil)
+	 (source-file-name	 buffer-file-name)
 	 (get-real-file-name-f (flymake-get-real-file-name-function source-file-name)))
 
-    (while (< idx count)
-      (setq line-err-info (flymake-parse-line (nth idx lines)))
-      (when line-err-info
-	(setq real-file-name (funcall get-real-file-name-f
-                                      (flymake-ler-file line-err-info)))
-	(setq line-err-info (flymake-ler-set-full-file line-err-info real-file-name))
-
-	(when (flymake-same-files real-file-name source-file-name)
-	  (setq line-err-info (flymake-ler-set-file line-err-info nil))
-	  (setq err-info-list (flymake-add-err-info err-info-list line-err-info))))
-      (flymake-log 3 "parsed '%s', %s line-err-info" (nth idx lines) (if line-err-info "got" "no"))
-      (setq idx (1+ idx)))
-    err-info-list))
+	(while (< idx count)
+	  (setq line-err-info (flymake-parse-line (nth idx lines)))
+	  (when line-err-info
+		(setq real-file-name (funcall get-real-file-name-f
+									  (flymake-ler-file line-err-info)))
+		(setq line-err-info (flymake-ler-set-full-file line-err-info real-file-name))
+		(when (flymake-same-files real-file-name source-file-name)
+		  (setq line-err-info (flymake-ler-set-file line-err-info nil))
+		  (setq err-info-list (flymake-add-err-info err-info-list line-err-info))))
+	  (flymake-log 3 "parsed '%s', %s line-err-info" (nth idx lines) (if line-err-info "got" "no"))
+	  (setq idx (1+ idx)))
+	err-info-list))
 
 (defun flymake-split-output (output)
   "Split OUTPUT into lines.
@@ -975,34 +977,37 @@ from compile.el")
 Return its components if so, nil otherwise."
   (let ((raw-file-name nil)
 	(line-no 0)
+	(column-no 0)
 	(err-type "e")
 	(err-text nil)
 	(patterns flymake-err-line-patterns)
 	(matched nil))
     (while (and patterns (not matched))
-      (when (string-match (car (car patterns)) line)
-	(let* ((file-idx (nth 1 (car patterns)))
-	       (line-idx (nth 2 (car patterns))))
+	  (when (string-match (car (car patterns)) line)
+		(let* ((file-idx (nth 1 (car patterns)))
+			   (line-idx (nth 2 (car patterns)))
+			   (colm-idx (nth 3 (car patterns))))
 
-	  (setq raw-file-name (if file-idx (match-string file-idx line) nil))
-	  (setq line-no       (if line-idx (string-to-number (match-string line-idx line)) 0))
-	  (setq err-text      (if (> (length (car patterns)) 4)
-				  (match-string (nth 4 (car patterns)) line)
-				(flymake-patch-err-text (substring line (match-end 0)))))
-	  (or err-text (setq err-text "<no error text>"))
-	  ;; Matching for warnings
-	  (when (and err-text (one-true (string-match-multi flymake-warn-line-regex err-text)))
-	    (setq err-type "w"))
-	  ;; Matching for info messages
-	  (when (and err-text (one-true (string-match-multi flymake-info-line-regex err-text)))
-	    (setq err-type "i"))
-	  
-	  (flymake-log 3 "parse line: type=%s file-idx=%s line-idx=%s file=%s line=%s text=%s" err-type file-idx line-idx
-		       raw-file-name line-no err-text)
-	  (setq matched t)))
+		  (setq raw-file-name (if file-idx (match-string file-idx line) nil))
+		  (setq line-no		  (if line-idx (string-to-number (match-string line-idx line)) 0))
+		  (setq column-no	  (if colm-idx (string-to-number (match-string colm-idx line)) 0))
+		  (setq err-text	  (if (> (length (car patterns)) 4)
+								  (match-string (nth 4 (car patterns)) line)
+								(flymake-patch-err-text (substring line (match-end 0)))))
+		  (or err-text (setq err-text "<no error text>"))
+		  ;; Matching for warnings
+		  (when (and err-text (one-true (string-match-multi flymake-warn-line-regex err-text)))
+			(setq err-type "w"))
+		  ;; Matching for info messages
+		  (when (and err-text (one-true (string-match-multi flymake-info-line-regex err-text)))
+			(setq err-type "i"))
+
+		  (flymake-log 3 "parse line: type=%s file-idx=%s line-idx=%s file=%s line=%s column=%s text=%s"
+					   err-type file-idx line-idx raw-file-name line-no column-no err-text)
+		  (setq matched t)))
       (setq patterns (cdr patterns)))
     (if matched
-	(flymake-ler-make-ler raw-file-name line-no err-type err-text)
+		(flymake-ler-make-ler raw-file-name line-no column-no err-type err-text)
       ())))
 
 (defun flymake-find-err-info (err-info-list line-no)
@@ -1021,11 +1026,11 @@ Return its components if so, nil otherwise."
 
 (defun flymake-line-err-info-is-less-or-equal (line-one line-two)
   (or (string< (flymake-ler-type line-one) (flymake-ler-type line-two))
-      (and (string= (flymake-ler-type line-one) (flymake-ler-type line-two))
-	   (not (flymake-ler-file line-one)) (flymake-ler-file line-two))
-      (and (string= (flymake-ler-type line-one) (flymake-ler-type line-two))
-	   (or (and      (flymake-ler-file line-one)       (flymake-ler-file line-two))
-	       (and (not (flymake-ler-file line-one)) (not (flymake-ler-file line-two)))))))
+	  (and (string= (flymake-ler-type line-one) (flymake-ler-type line-two))
+		   (not (flymake-ler-file line-one)) (flymake-ler-file line-two))
+	  (and (string= (flymake-ler-type line-one) (flymake-ler-type line-two))
+		   (or (and		 (flymake-ler-file line-one)	   (flymake-ler-file line-two))
+			   (and (not (flymake-ler-file line-one)) (not (flymake-ler-file line-two)))))))
 
 (defun flymake-add-line-err-info (line-err-info-list line-err-info)
   "Update LINE-ERR-INFO-LIST with the error LINE-ERR-INFO.
@@ -1056,13 +1061,13 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
 	 (err-info            nil))
 
     (if exists
-	(setq line-err-info-list (flymake-er-get-line-err-info-list (car (nthcdr pos err-info-list)))))
+		(setq line-err-info-list (flymake-er-get-line-err-info-list (car (nthcdr pos err-info-list)))))
     (setq line-err-info-list (flymake-add-line-err-info line-err-info-list line-err-info))
 
     (setq err-info (flymake-er-make-er line-no line-err-info-list))
     (cond (exists             (setq err-info-list (flymake-set-at err-info-list pos err-info)))
-	  ((equal 0 pos)      (setq err-info-list (cons err-info err-info-list)))
-	  (t                  (setq err-info-list (flymake-ins-after err-info-list (1- pos) err-info))))
+		  ((equal 0 pos)      (setq err-info-list (cons err-info err-info-list)))
+		  (t                  (setq err-info-list (flymake-ins-after err-info-list (1- pos) err-info))))
     err-info-list))
 
 (defun flymake-get-project-include-dirs-imp (basedir)
@@ -1201,12 +1206,13 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
 	  process)
       (error
        (let* ((err-str (format "Failed to launch syntax check process '%s' with args %s: %s"
-			       cmd args (error-message-string err)))
-	      (source-file-name buffer-file-name)
-	      (cleanup-f        (flymake-get-cleanup-function source-file-name)))
-	 (flymake-log 0 err-str)
-	 (funcall cleanup-f)
-	 (flymake-report-fatal-status "PROCERR" err-str))))))
+							   cmd args (error-message-string err)))
+			  (source-file-name buffer-file-name)
+              (cleanup-f        (flymake-get-cleanup-function source-file-name)))
+         (flymake-log 0 err-str)
+         (funcall cleanup-f)
+         (setq flymake-is-running nil)
+         (flymake-report-fatal-status "PROCERR" err-str))))))
 
 (defun flymake-kill-process (proc)
   "Kill process PROC."
@@ -1284,11 +1290,12 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
 	  (setq menu-item-text (flymake-ler-text (nth (1- count) line-err-info-list)))
 	  (let* ((file       (flymake-ler-file (nth (1- count) line-err-info-list)))
 		 (full-file  (flymake-ler-full-file (nth (1- count) line-err-info-list)))
-		 (line       (flymake-ler-line (nth (1- count) line-err-info-list))))
+		 (line       (flymake-ler-line (nth (1- count) line-err-info-list)))
+		 (column     (flymake-ler-column (nth (1- count) line-err-info-list))))
 	    (if file
-		(setq menu-item-text (concat menu-item-text " - " file "(" (format "%d" line) ")")))
+		(setq menu-item-text (format "%s - %s(%d, %d)" menu-item-text file line column)))
 	    (setq menu-items (cons (list menu-item-text
-					 (if file (list 'flymake-goto-file-and-line full-file line) nil))
+					 (if file (list 'flymake-goto-file-and-line-and-column full-file line column) nil))
 				   menu-items)))
 	  (setq count (1- count)))
 	(flymake-log 3 "created menu-items with %d item(s)" (length menu-items))))
@@ -1299,13 +1306,14 @@ For the format of LINE-ERR-INFO, see `flymake-ler-make-ler'."
 	  (list menu-title menu-items))
       nil)))
 
-(defun flymake-goto-file-and-line (file line)
-  "Try to get buffer for FILE and goto line LINE in it."
+(defun flymake-goto-file-and-line-and-column (file line column)
+  "Try to get buffer for FILE and goto line LINE and COLUMN in it."
   (if (not (file-exists-p file))
       (flymake-log 1 "File %s does not exist" file)
     (find-file file)
     (goto-char (point-min))
-    (forward-line (1- line))))
+    (forward-line (1- line))
+    (move-to-column column)))
 
 ;; flymake minor mode declarations
 (defvar flymake-mode-line nil)
