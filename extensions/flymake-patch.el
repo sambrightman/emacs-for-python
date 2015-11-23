@@ -380,7 +380,7 @@ Return its file name if found, or nil if not found."
 (defun flymake-fix-file-name (name)
   "Replace all occurrences of '\' with '/'."
   (when name
-    (setq name (expand-file-name name))
+    (setq name (file-truename name))
     (setq name (abbreviate-file-name name))
     (setq name (directory-file-name name))
     name))
@@ -1599,9 +1599,9 @@ Return full-name.  Names are real, not patched."
     (setq real-name (flymake-get-full-patched-file-name file-name-from-err-msg base-dirs files))
     ;; if real-name is nil, than file name from err msg is none of the files we've patched
     (if (not real-name)
-	(setq real-name (flymake-get-full-nonpatched-file-name file-name-from-err-msg base-dirs)))
+		(setq real-name (flymake-get-full-nonpatched-file-name file-name-from-err-msg base-dirs)))
     (if (not real-name)
-	(setq real-name file-name-from-err-msg))
+		(setq real-name file-name-from-err-msg))
     (setq real-name (flymake-fix-file-name real-name))
     (flymake-log 3 "get-real-file-name: file-name=%s real-name=%s" file-name-from-err-msg real-name)
     real-name))

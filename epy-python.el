@@ -78,8 +78,8 @@
   (let* ((temp-file (flymake-init-create-temp-buffer-copy 
                      'flymake-create-temp-in-system-tempdir)))
     (file-relative-name
-     temp-file 
-     (file-name-directory buffer-file-name))
+     (file-truename temp-file)
+     (file-truename (file-name-directory buffer-file-name)))
     )
   )   
 
