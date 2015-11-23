@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-import os,sys,re
+import os
+import sys
+import re
 # Actually I'm copying from epylint
 from subprocess import Popen, PIPE
 
-from pylint.lint import version
-from distutils.version import StrictVersion
 
 def lint(filename):
     """Pylint the given file.
@@ -30,24 +30,22 @@ def lint(filename):
         parentPath = os.path.dirname(parentPath)
 
     # Start pylint
-    if StrictVersion(version) > StrictVersion("0.21.0"):
-        command = "pylint -f parseable -r n --disable=C,R,I '%s'"
-    else:
-        command = "pylint -f parseable -r n --disable-msg-cat=CRI '%s'" 
-
+    command = "pylint --msg-template '{path}:{line}:{column} [{msg_id}({symbol}), {obj}] {msg}' --report=no '%s'"
     process = Popen(command %
                     childPath, shell=True, stdout=PIPE, stderr=PIPE,
                     cwd=parentPath)
-    
+
     p = process.stdout
 
     # The parseable line format is '%(path)s:%(line)s: [%(sigle)s%(obj)s] %(msg)s'
     # NOTE: This would be cleaner if we added an Emacs reporter to pylint.reporters.text ..
-    regex = re.compile(r"\[(?P<type>[WE])(?P<remainder>.*?)\]")
+    regex = re.compile(r"\[(?P<type>[A-Z])(?P<remainder>.*?)\]")
 
     def _replacement(mObj):
-        "Alter to include 'Error' or 'Warning'"
-        if mObj.group("type") == "W":
+        "Alter to include 'Error', 'Warning' or 'Info'"
+        if mObj.group("type") in ("C", "R", "I"):
+            replacement = "Info"
+        elif mObj.group("type") in ("W"):
             replacement = "Warning"
         else:
             replacement = "Error"
@@ -56,7 +54,7 @@ def lint(filename):
 
     for line in p:
         # remove pylintrc warning
-        if line.startswith("No config file found"):
+        if line.startswith("No config file found") or line.startswith("************* Module"):
             continue
         line = regex.sub(_replacement, line, 1)
         # modify the file name thats output to reverse the path traversal we made
